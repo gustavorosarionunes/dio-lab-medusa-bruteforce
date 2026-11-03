@@ -1,0 +1,56 @@
+# ==============================================================================
+# Configuração Personalizada do Fail2ban (jail.local)
+# Destino no sistema: /etc/fail2ban/jail.local
+# ==============================================================================
+
+[DEFAULT]
+# IPs em whitelist que nunca devem ser bloqueados (ex: gateway local, IP do host)
+ignoreip = 127.0.0.1/8 ::1 192.168.56.1
+
+# Tempo em segundos que o IP infrator permanecerá banido (ex: 1 hora)
+bantime  = 3600
+
+# Janela de tempo avaliada para contagem de falhas (ex: 10 minutos)
+findtime = 600
+
+# Número máximo de falhas permitidas dentro do intervalo findtime antes do ban
+maxretry = 5
+
+# Ação de bloqueio: utiliza iptables para rejeitar pacotes
+banaction = iptables-multiport
+
+# ------------------------------------------------------------------------------
+# Proteção para Servidor FTP (vsftpd)
+# ------------------------------------------------------------------------------
+[vsftpd]
+enabled  = true
+port     = ftp,ftp-data,ftps,ftps-data
+filter   = vsftpd
+logpath  = /var/log/vsftpd.log
+maxretry = 3
+findtime = 300
+bantime  = 1800
+
+# ------------------------------------------------------------------------------
+# Proteção para Servidor SSH
+# ------------------------------------------------------------------------------
+[sshd]
+enabled  = true
+port     = ssh
+filter   = sshd
+logpath  = /var/log/auth.log
+maxretry = 3
+findtime = 600
+bantime  = 7200
+
+# ------------------------------------------------------------------------------
+# Proteção para Autenticação HTTP (Exemplo Genérico para Formulários Web)
+# ------------------------------------------------------------------------------
+[http-post-bruteforce]
+enabled  = true
+port     = http,https
+filter   = apache-auth
+logpath  = /var/log/apache2/error.log
+maxretry = 5
+findtime = 300
+bantime  = 3600

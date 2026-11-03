@@ -1,0 +1,12 @@
+admin
+123456
+password
+root
+toor
+msfadmin
+service
+user
+guest
+teste123
+senha123
+dio2026
