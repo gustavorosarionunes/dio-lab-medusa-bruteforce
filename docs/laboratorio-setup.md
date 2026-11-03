@@ -6,7 +6,7 @@ Este documento orienta a criação do ambiente de testes seguro e isolado utiliz
 
 ## 1. Pré-Requisitos
 
-- **Oracle VM VirtualBox** (versão 7.x ou superior recomendada).
+- **Oracle VM VirtualBox** (versão 7.x ou superior).
 - **ISO / VM do Kali Linux**: Máquina de auditoria.
 - **VM do Metasploitable 2**: Máquina propositalmente vulnerável para homologação de segurança.
 
@@ -16,14 +16,16 @@ Este documento orienta a criação do ambiente de testes seguro e isolado utiliz
 
 A rede *Host-Only* cria uma interface virtual privada entre o sistema operacional hospedeiro e as máquinas virtuais, sem permitir que o tráfego saia para a internet física.
 
+![Ambiente VirtualBox](../images/01-ambiente-virtualbox.png)
+
 ### Passo a passo no VirtualBox:
 
 1. No menu principal do VirtualBox, acesse: **Ferramentas (Tools)** > **Rede (Network Manager)**.
-2. Crie ou selecione um adaptador exclusivo do hospedeiro (ex.: `vboxnet0` ou `VirtualBox Host-Only Ethernet Adapter`).
+2. Crie ou selecione um adaptador exclusivo do hospedeiro (ex.: `VirtualBox Host-Only Ethernet Adapter`).
 3. Configure a faixa de endereços IPv4:
    - **Endereço IPv4:** `192.168.56.1`
    - **Máscara de rede:** `255.255.255.0`
-4. *(Opcional)* Habilite o Servidor DHCP ou prefira IPs estáticos atribuídos manualmente dentro das VMs para previsibilidade.
+4. Habilite o Servidor DHCP ou use os IPs atribuídos automaticamente pelo pool do VirtualBox.
 
 ---
 
@@ -38,7 +40,7 @@ A rede *Host-Only* cria uma interface virtual privada entre o sistema operaciona
    ```bash
    ip a
    ```
-   Anote o IP atribuído (ex: `192.168.56.10`).
+   *No laboratório executado, o IP atribuído ao Kali foi:* `192.168.56.102`.
 
 ---
 
@@ -52,18 +54,20 @@ A rede *Host-Only* cria uma interface virtual privada entre o sistema operaciona
    ```bash
    ifconfig eth0
    ```
-   Anote o IP atribuído (ex: `192.168.56.20`).
+   *No laboratório executado, o IP atribuído à Metasploitable foi:* `192.168.56.101`.
 
 ---
 
 ## 4. Validação de Conectividade Interna
 
-Do terminal do Kali Linux, teste se o alvo responde exclusivamente na rede interna:
+Do terminal do Kali Linux, foi validada a resposta do alvo exclusivamente na rede interna:
 
 ```bash
-ping -c 3 192.168.56.20
+ping -c 4 192.168.56.101
 ```
 
-Se houver resposta, o laboratório está pronto e completamente isolado.
+![Teste de Conectividade](../images/02-teste-conectividade.png)
 
-> **Regra de Segurança:** Nunca configure a máquina vulnerável com adaptador em modo *Bridge* (Placa em Modo Bridge) conectado diretamente à rede corporativa ou residencial com acesso à internet, pois serviços intencionalmente vulneráveis ficariam expostos a varreduras externas.
+Confirmada a troca de pacotes ICMP com sucesso, comprovando o isolamento e comunicação direta entre as duas instâncias.
+
+> **Regra de Segurança:** Nunca configure a máquina vulnerável com adaptador em modo *Bridge* conectado diretamente à rede corporativa ou residencial com acesso à internet, pois serviços intencionalmente vulneráveis ficariam expostos a varreduras externas.

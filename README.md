@@ -6,7 +6,7 @@
 
 Este repositório documenta a implementação de um ambiente controlado de testes de segurança, análise de riscos em serviços de autenticação (FTP, HTTP e SMB) e, principalmente, **estratégias robustas de mitigação, detecção e defesa cibernética**.
 
-Projeto desenvolvido como parte do desafio prático da plataforma **Digital Innovation One (DIO)** focado no estudo de ataques de força bruta, dicionário e password spraying em ambientes de homologação.
+Projeto desenvolvido como parte do desafio prático da plataforma **Digital Innovation One (DIO)** focado no estudo de autenticação, força bruta, dicionário e password spraying em ambientes de homologação.
 
 ---
 
@@ -17,7 +17,11 @@ Projeto desenvolvido como parte do desafio prático da plataforma **Digital Inno
 - [Conceitos Teóricos Fundamentais](#-conceitos-teóricos-fundamentais)
   - [Força Bruta vs. Dicionário vs. Password Spraying](#força-bruta-vs-dicionário-vs-password-spraying)
   - [Superfícies de Ataque Analisadas](#superfícies-de-ataque-analisadas)
-- [Detecção e Análise de Logs](#-detecção-e-análise-de-logs)
+- [Evidências Práticas e Análise de Logs](#-evidências-práticas-e-análise-de-logs)
+  - [1. Reconhecimento de Superfície (Nmap)](#1-reconhecimento-de-superfície-nmap)
+  - [2. Análise de Formulário Web (DVWA)](#2-análise-de-formulário-web-dvwa)
+  - [3. Enumeração e Acesso SMB (Samba)](#3-enumeração-e-acesso-smb-samba)
+  - [4. Detecção Forense no Alvo (Logs Apache)](#4-detecção-forense-no-alvo-logs-apache)
 - [Estratégias de Mitigação e Hardening](#-estratégias-de-mitigação-e-hardening)
   - [1. Proteção em FTP (vsftpd)](#1-proteção-em-ftp-vsftpd)
   - [2. Rate Limiting em Aplicações Web](#2-rate-limiting-em-aplicações-web)
@@ -34,7 +38,7 @@ Projeto desenvolvido como parte do desafio prático da plataforma **Digital Inno
 O objetivo deste projeto é exercitar a mentalidade de auditoria e segurança defensiva:
 1. **Compreender a mecânica** de falhas de autenticação decorrentes de senhas fracas, falta de bloqueio de contas e ausência de limites de requisição (*rate limiting*).
 2. **Construir um ambiente isolado (Sandbox)** para reproduzir cenários controlados sem riscos à rede externa ou a terceiros.
-3. **Analisar as pegadas (*artifacts/logs*)** deixadas por tentativas massivas de login.
+3. **Analisar as pegadas (*artifacts/logs*)** deixadas por tentativas de autenticação e varredura.
 4. **Implementar e documentar contramedidas práticas** (Blue Team) para neutralizar ou mitigar tais vetores de ameaça.
 
 ---
@@ -47,19 +51,26 @@ Para garantir segurança operacional e isolamento rigoroso, todo o ecossistema �
 graph LR
     subgraph Host["Máquina Host (VirtualBox)"]
         subgraph InternalNet["Rede Host-Only (192.168.56.0/24)"]
-            Kali["Kali Linux (Auditor)<br/>IP: 192.168.56.10"]
-            Target["Metasploitable 2 / DVWA (Alvo)<br/>IP: 192.168.56.20"]
+            Kali["Kali Linux (Auditor)<br/>IP: 192.168.56.102"]
+            Target["Metasploitable 2 / DVWA (Alvo)<br/>IP: 192.168.56.101"]
             Kali <-->|Tráfego Isolado| Target
         end
     end
     Internet((Internet)) -.->|Bloqueado / Sem Saída| InternalNet
 ```
 
-- **Máquina de Auditoria**: Kali Linux (contendo utilitários de auditoria de credenciais como Medusa, Nmap, Hydra).
-- **Máquina Alvo (Vulnerável)**: Metasploitable 2 / Instância DVWA local.
-- **Configuração de Rede**: Interface de rede configurada como *Host-Only Adapter* (ou Rede Interna), desabilitando roteamento para a internet e prevenindo vazamentos de tráfego.
+- **Máquina de Auditoria**: Kali Linux (IP `192.168.56.102`).
+- **Máquina Alvo (Vulnerável)**: Metasploitable 2 / Instância DVWA local (IP `192.168.56.101`).
+- **Configuração de Rede**: Interface configurada como *Host-Only Adapter* (Rede Exclusiva do Hospedeiro), desabilitando roteamento para a internet e prevenindo vazamentos de tráfego.
 
-Consulte o [Guia de Configuração do Ambiente](docs/laboratorio-setup.md) para o passo a passo de montagem das VMs.
+### Evidências da Infraestrutura Virtual:
+
+| Configuração no VirtualBox | Teste de Conectividade (Ping) |
+| :---: | :---: |
+| ![Ambiente VirtualBox](images/01-ambiente-virtualbox.png) | ![Teste de Conectividade](images/02-teste-conectividade.png) |
+| *Topologia das VMs em execução no VirtualBox* | *Comunicação direta confirmada entre Kali e Metasploitable* |
+
+Consulte o [Guia de Configuração do Ambiente](docs/laboratorio-setup.md) para o passo a passo completo de montagem das VMs.
 
 ---
 
@@ -87,33 +98,45 @@ Consulte o [Guia de Configuração do Ambiente](docs/laboratorio-setup.md) para 
 
 ---
 
-## 🔍 Detecção e Análise de Logs
+## 📸 Evidências Práticas e Análise de Logs
 
-Um dos pilares deste projeto é a observabilidade. Quando um serviço é submetido a testes de autenticação, padrões claros emergem nos logs do sistema:
+As simulações realizadas geraram evidências que ilustram o ciclo completo de auditoria e resposta a incidentes:
 
-### 1. Evidências em `/var/log/auth.log` (Linux PAM / SSH / FTP)
-```text
-Nov  2 21:15:02 target-vm vsftpd: pam_unix(vsftpd:auth): authentication failure; logname= uid=0 euid=0 tty=ftp ruser=admin rhost=192.168.56.10
-Nov  2 21:15:03 target-vm vsftpd: pam_unix(vsftpd:auth): check pass; user unknown
-Nov  2 21:15:04 target-vm vsftpd: pam_unix(vsftpd:auth): authentication failure; logname= uid=0 euid=0 tty=ftp ruser=root rhost=192.168.56.10
-```
-> **Alerta do Defensor:** Centenas de requisições por segundo originadas do mesmo endereço IP (`192.168.56.10`) para credenciais genéricas denotam varredura automatizada.
+### 1. Reconhecimento de Superfície (Nmap)
+A etapa inicial consiste no mapeamento de portas e serviços abertos no alvo vulnerável:
 
-### 2. Evidências em Logs Web (Nginx / Apache `access.log`)
-```text
-192.168.56.10 - - [02/Nov/2026:21:18:12 -0300] "POST /dvwa/login.php HTTP/1.1" 200 4528 "-" "Medusa/2.2"
-192.168.56.10 - - [02/Nov/2026:21:18:12 -0300] "POST /dvwa/login.php HTTP/1.1" 200 4528 "-" "Medusa/2.2"
-192.168.56.10 - - [02/Nov/2026:21:18:13 -0300] "POST /dvwa/login.php HTTP/1.1" 200 4528 "-" "Medusa/2.2"
-```
-> **Alerta do Defensor:** Respostas HTTP 200 repetidas em intervalo de milissegundos sem variação de cabeçalhos e com User-Agents padronizados revelam ferramentas de automação.
+![Varredura Nmap](images/03-varredura-nmap.png)
+*Varredura com Nmap identificando portas essenciais abertas (FTP 21, SSH 22, HTTP 80, SMB 139/445).*
 
-Veja mais detalhes e consultas em [Guia de Análise de Logs e Detecção](docs/analise-logs-e-deteccao.md).
+---
+
+### 2. Análise de Formulário Web (DVWA)
+Inspeção detalhada da autenticação web via DevTools do navegador (Aba Network):
+
+![Análise DVWA](images/04-analise-requisicao-dvwa.png)
+*Identificação dos parâmetros de requisição HTTP `POST /dvwa/login.php` (`username`, `password`, `Login`) e o comportamento do backend perante credencial inválida (`Login failed`).*
+
+---
+
+### 3. Enumeração e Acesso SMB (Samba)
+Validação de credenciais e levantamento de compartilhamentos de arquivos via `smbclient`:
+
+![Validação SMB](images/03-validacao-acesso-smb.png)
+*Autenticação bem-sucedida e listagem dos compartilhamentos de rede ativos (`print$`, `tmp`, `opt`, `IPC$`, `msfadmin`).*
+
+---
+
+### 4. Detecção Forense no Alvo (Logs Apache)
+A observabilidade é comprovada através dos registros de logs da máquina alvo (`/var/log/apache2/access.log`):
+
+![Logs de Autenticação](images/05-logs-autenticacao.png)
+*Evidência forense no servidor Metasploitable: registros da varredura Nmap (User-Agent NSE) e múltiplas submissões `POST /dvwa/login.php` originadas do IP `192.168.56.102`.*
 
 ---
 
 ## 🛡️ Estratégias de Mitigação e Hardening
 
-A parte essencial deste desafio é a resposta defensiva: como garantir que a infraestrutura resista a investidas de força bruta.
+A resposta defensiva implementa controles para neutralizar investidas de força bruta e varredura automatizada:
 
 ### 1. Proteção em FTP (vsftpd)
 - **Desabilitar Login Anônimo:**
@@ -147,6 +170,8 @@ Além do rate limiting no servidor web:
 - **MFA (Autenticação Multifator)**: Torna credenciais vazadas insuficientes para concessão de acesso.
 - **Proteção contra Enumeração de Usuários**: Respostas genéricas como *"Credenciais inválidas"* em vez de *"Usuário inexistente"*.
 
+Consulte o arquivo [`mitigation/nginx-rate-limit.conf`](mitigation/nginx-rate-limit.conf).
+
 ### 3. Políticas de Bloqueio em SMB/Windows
 Para conter *Password Spraying* e força bruta em ambientes Windows ou servidores Samba:
 - **Limite de Bloqueio de Conta (Account Lockout Threshold)**: Ex.: Bloquear a conta por 15 minutos após 5 tentativas incorretas.
@@ -154,9 +179,12 @@ Para conter *Password Spraying* e força bruta em ambientes Windows ou servidore
 - **Desabilitar Enumeração Anônima**: Bloquear sessões nulas configurando `RestrictAnonymous = 1` no registro ou `restrict anonymous = 2` no `smb.conf`.
 
 ### 4. Automação Defensiva com Fail2ban
-O `fail2ban` monitora logs de autenticação e insere regras temporárias ou permanentes no firewall (iptables/nftables) ao detectar comportamentos anômalos.
+O `fail2ban` monitora logs de autenticação e insere regras dinâmicas no firewall (iptables/nftables) ao detectar comportamentos abusivos:
 
-Exemplo de configuração contido neste repositório em [`mitigation/fail2ban-jail.local`](mitigation/fail2ban-jail.local):
+![Mitigação e Defesa](images/06-mitigacao-defesa.png)
+*Configuração defensiva com regras de bloqueio automático por IP.*
+
+Consulte a implementação completa em [`mitigation/fail2ban-jail.local`](mitigation/fail2ban-jail.local):
 ```ini
 [vsftpd]
 enabled  = true
@@ -175,7 +203,7 @@ bantime  = 3600
 ```text
 dio-lab-medusa-bruteforce/
 │
-├── README.md                      # Documentação central do projeto
+├── README.md                      # Documentação central do projeto com evidências
 ├── LICENSE                        # Licença MIT
 │
 ├── docs/                          # Documentações detalhadas
@@ -190,8 +218,14 @@ dio-lab-medusa-bruteforce/
 │   ├── README.md                  # Explicação sobre geração e boas práticas de wordlists
 │   └── exemplo-wordlist.txt       # Wordlist didática com credenciais fracas fictícias
 │
-└── images/                        # Capturas de tela e evidências do laboratório
-    └── .gitkeep                   # Diretório reservado para imagens do autor
+└── images/                        # Capturas de tela e evidências práticas
+    ├── 01-ambiente-virtualbox.png
+    ├── 02-teste-conectividade.png
+    ├── 03-varredura-nmap.png
+    ├── 03-validacao-acesso-smb.png
+    ├── 04-analise-requisicao-dvwa.png
+    ├── 05-logs-autenticacao.png
+    └── 06-mitigacao-defesa.png
 ```
 
 ---
@@ -199,16 +233,17 @@ dio-lab-medusa-bruteforce/
 ## ⚖️ Boas Práticas e Ética
 
 > **Aviso de Responsabilidade:**  
-> Os estudos, metodologias e análises contidos neste repositório têm caráter estritamente educativo e preventivo. Todas as simulações devem ser realizadas exclusivamente em ambientes virtuais isolados e autorizados. O uso de técnicas de auditoria contra sistemas sem permissão formal é ilegal e viola as leis de proteção de dados e crimes cibernéticos (ex.: Lei nº 12.737/2012 e Lei nº 13.709/2018 - LGPD no Brasil).
+> Os estudos, metodologias e análises contidos neste repositório têm caráter estritamente educativo e preventivo. Todas as simulações foram realizadas exclusivamente em ambiente virtual isolado (Host-Only). O uso de técnicas de auditoria contra sistemas sem permissão formal é ilegal e viola as leis de proteção de dados e crimes cibernéticos (ex.: Lei nº 12.737/2012 e Lei nº 13.709/2018 - LGPD no Brasil).
 
 ---
 
 ## 🎓 Conclusões
 
 A realização deste laboratório evidencia que:
-1. Senhas simples ou previsíveis continuam sendo o elo mais frágil de sistemas expostos.
-2. A ausência de limitação de tentativas (*rate limit*) permite que atacantes automatizem milhares de palpites por minuto.
-3. Medidas defensivas como **Fail2ban**, **políticas de complexidade**, **bloqueio de contas** e **MFA** são indispensáveis para garantir a resiliência operacional da infraestrutura.
+1. Senhas simples ou previsíveis continuam sendo o elo mais vulnerável em serviços com autenticação exposta.
+2. A ausência de limitação de tentativas (*rate limit*) permite automação de requisições sem atrito para o auditor/atacante.
+3. A observabilidade via logs (`access.log`, `auth.log`) é indispensável para identificar padrões de User-Agent, frequência anômala e IPs de origem.
+4. Medidas defensivas como **Fail2ban**, **políticas de complexidade**, **bloqueio de contas** e **MFA** são essenciais para garantir a resiliência operacional da infraestrutura.
 
 ---
 
